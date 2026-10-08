@@ -1,0 +1,49 @@
+name: Monitor concurso
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # a cada 30 min (cabe no plano grátis de repositório privado)
+  workflow_dispatch:          # botão "Run workflow" para testar na hora
+    inputs:
+      enviar_teste:
+        description: "Enviar mensagem de teste ao Telegram"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: monitor-concurso
+  cancel-in-progress: false
+
+jobs:
+  checar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Teste do Telegram (só no botão manual)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.enviar_teste }}
+        run: python bot_concurso.py --teste
+
+      - name: Checar a página do concurso
+        run: python bot_concurso.py --uma-vez
+
+      - name: Guardar hashtags no repositório
+        run: |
+          git config user.name "monitor-bot"
+          git config user.email "monitor-bot@users.noreply.github.com"
+          git add historico/hashtags.txt
+          git diff --cached --quiet || (git commit -m "atualiza hashtags" && git push)
